@@ -30,5 +30,53 @@ func NewConnection(conn *net.TCPConn, connID uint32, callbackApi ziface.HandFunc
 }
 
 func (c *Connection) StartReader() {
-	fmt.Println("")
+	fmt.Println("Reader Goroutine is running")
+	defer fmt.Println(c.RemoteAddr().String(), " conn reader exit!")
+	defer c.Stop()
+	for {
+		buf := make([]byte, 512)
+		cnt, err := c.Conn.Read(buf)
+		if err != nil {
+			fmt.Println("recv buf err ", err)
+			c.ExitBuffChan <- true
+			return
+		}
+		if err := c.handleAPI(c.Conn, buf, cnt); err != nil {
+			fmt.Println("conID ", c.ConnID, " handle is error")
+			c.ExitBuffChan <- true
+			return
+		}
+	}
+}
+
+func (c *Connection) Start() {
+	go c.StartReader()
+	for {
+		select {
+		case <-c.ExitBuffChan:
+			return
+		}
+	}
+}
+
+func (c *Connection) Stop() {
+	if c.isClosed == true {
+		return
+	}
+	c.isClosed = true
+	c.Conn.Close()
+	c.ExitBuffChan <- true
+	close(c.ExitBuffChan)
+}
+
+func (c *Connection) RemoteAddr() net.Addr {
+	return c.Conn.RemoteAddr()
+}
+
+func (c *Connection) GetConnID() uint32 {
+	return c.ConnID
+}
+
+func (c *Connection) GetTCPConnection() *net.TCPConn {
+	return c.Conn
 }
